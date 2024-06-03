@@ -1,8 +1,9 @@
-use std::{error::Error, fs};
+use std::{env, error::Error, fs};
 
 pub struct Config {
     pub query: String,
     pub file_path: String,
+    pub ignore_case: bool,
 }
 
 impl Config {
@@ -13,17 +14,25 @@ impl Config {
 
         let query = args[1].clone();
         let file_path = args[2].clone();
+        let ignore_case = env::var("IGNORE_CASE").is_ok();
 
-        Ok(Config { query, file_path })
+        Ok(Config {
+            query,
+            file_path,
+            ignore_case,
+        })
     }
 }
 
-fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+fn search<'a>(query: &str, contents: &'a str, ignore_case: bool) -> Vec<&'a str> {
+    let lowercased_query = query.to_lowercase();
     contents
         .lines()
         .into_iter()
         .fold(vec![], |mut result, line| {
-            if line.contains(query) {
+            if ignore_case && line.to_lowercase().contains(&lowercased_query) {
+                result.push(line.trim())
+            } else if !ignore_case && line.contains(query) {
                 result.push(line.trim())
             }
             result
@@ -33,10 +42,9 @@ fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     let contents = fs::read_to_string(config.file_path)?;
 
-    for line in search(&config.query, &contents) {
+    for line in search(&config.query, &contents, config.ignore_case) {
         println!("{line}");
     }
-
     Ok(())
 }
 
@@ -47,7 +55,8 @@ mod tests {
          Rust:
          safe, fast, productive.
          Pick three.
-         Rust rocks.";
+         Rust rocks.
+         Duct tape.";
 
     #[test]
     fn zero_results() {
@@ -56,33 +65,33 @@ mod tests {
         let expected_result: Vec<&str> = vec![];
 
         // when
-        let result = search(&query, &CONTENTS);
+        let result = search(&query, &CONTENTS, false);
 
         // then
         assert_eq!(result, expected_result);
     }
 
     #[test]
-    fn one_result() {
+    fn case_sensitive_one_result() {
         // given
         let query = "duct";
         let expected_result = vec!["safe, fast, productive."];
 
         // when
-        let result = search(&query, &CONTENTS);
+        let result = search(&query, &CONTENTS, false);
 
         // then
         assert_eq!(result, expected_result);
     }
 
     #[test]
-    fn two_result() {
+    fn case_insensitive_two_results() {
         // given
-        let query = "Rust";
+        let query = "rUsT";
         let expected_result = vec!["Rust:", "Rust rocks."];
 
         // when
-        let result = search(&query, &CONTENTS);
+        let result = search(&query, &CONTENTS, true);
 
         // then
         assert_eq!(result, expected_result);
